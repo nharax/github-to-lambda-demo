@@ -32,7 +32,6 @@ phases:
           --query 'Versions[?IsLatest==`true`].VersionId' \
           --output text)
       - echo "Unsigned artifact version: $VERSION_ID"
-
       - echo "Starting signing job..."
       - |
         JOB_ID=$(aws signer start-signing-job \
@@ -42,7 +41,6 @@ phases:
           --query 'jobId' \
           --output text)
       - echo "Signing job ID: $JOB_ID"
-
       - echo "Waiting for signing job to complete..."
       - |
         while true; do
@@ -56,7 +54,6 @@ phases:
           fi
           sleep 10
         done
-
       - echo "Getting signed object key..."
       - |
         SIGNED_KEY=$(aws signer describe-signing-job \
@@ -64,11 +61,9 @@ phases:
           --query 'signedObject.s3.key' \
           --output text)
       - echo "Signed artifact key: $SIGNED_KEY"
-
       - echo "Deploying signed code to Lambda function..."
       - aws lambda update-function-code \
           --function-name "$LAMBDA_FUNCTION" \
           --s3-bucket "$BUCKET_NAME" \
           --s3-key "$SIGNED_KEY"
-
       - echo "Deployment complete."
