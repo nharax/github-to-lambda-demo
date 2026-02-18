@@ -1,36 +1,42 @@
 import json
-import pandas as pd
-import numpy as np
+import csv
+from io import StringIO
 
 def lambda_handler(event, context):
-    print("Testing Pandas and NumPy on Python 3.14...")
+    # Example: Imagine this data came from an S3 CSV file or a request
+    csv_data = """Name,Age,City
+    Tom,25,New York
+    Jack,30,Los Angeles
+    Nick,35,Chicago
+    """
     
     try:
-        # Create a simple DataFrame to test the layer
-        data = {
-            'A': [1, 2, 3],
-            'B': [4, 5, 6],
-            'C': ['Python', '3.14', 'Rocks']
-        }
-        df = pd.DataFrame(data)
+        # Use the built-in csv module to read data
+        f = StringIO(csv_data.strip())
+        reader = csv.DictReader(f)
         
-        # Perform a small calculation with NumPy
-        mean_val = np.mean(df['A'])
+        data_list = []
+        ages = []
         
-        message = f"Successfully used Pandas {pd.__version__} and NumPy {np.__version__}"
-        print(message)
+        for row in reader:
+            data_list.append(row)
+            ages.append(int(row['Age']))
+            
+        # Calculate the mean without NumPy
+        mean_age = sum(ages) / len(ages)
         
         return {
             'statusCode': 200,
             'body': json.dumps({
-                'message': message,
-                'mean_of_column_A': float(mean_val),
-                'dataframe_summary': df.to_dict()
+                'message': "Success! No Pandas required.",
+                'python_version': "3.14",
+                'average_age': mean_age,
+                'total_records': len(data_list),
+                'data': data_list
             })
         }
         
     except Exception as e:
-        print(f"Error: {str(e)}")
         return {
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
