@@ -3,7 +3,7 @@ version: 0.2
 env:
   variables:
     BUCKET_NAME: iotaas-code-signing-bucket
-    SIGNING_PROFILE: github_to_lambda_demo_signer
+    SIGNING_PROFILE: aizatronLambdaCodeSigner
     LAMBDA_FUNCTION: your-lambda-function-name
 
 phases:
@@ -26,13 +26,13 @@ phases:
   post_build:
     commands:
       - echo "Starting signing job..."
-      - JOB_ID=$(aws signer start-signing-job \
+      - |
+        JOB_ID=$(aws signer start-signing-job \
           --source "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"key\":\"unsigned-code/$ZIP_NAME\"}}" \
           --destination "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"prefix\":\"signed-code/\"}}" \
-          --profile-name $SIGNING_PROFILE \
+          --profile-name "" \
           --query 'jobId' \
           --output text)
-
       - echo "Waiting for signing job to complete..."
       - |
         while true; do
@@ -46,14 +46,8 @@ phases:
           fi
           sleep 10
         done
-
       - echo "Getting signed object key..."
       - SIGNED_KEY=$(aws signer describe-signing-job --job-id $JOB_ID --query 'signedObject.s3.key' --output text)
-
       - echo "Deploying signed Lambda..."
-      - aws lambda update-function-code \
-          --function-name $LAMBDA_FUNCTION \
-          --s3-bucket $BUCKET_NAME \
-          --s3-key $SIGNED_KEY
-
+      - aws lambda update-function-code --function-name $LAMBDA_FUNCTION --s3-bucket $BUCKET_NAME --s3-key $SIGNED_KEY
       - echo "Deployment complete."
