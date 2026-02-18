@@ -9,13 +9,14 @@ env:
 phases:
   install:
     runtime-versions:
-      python: 3.9
+      python: 3.14
     commands:
-      - echo "Dependencies handled by Layers. Skipping pip install."
+      - echo "Python 3.14 runtime selected. Skipping local pip install for Pandas."
   build:
     commands:
       - echo "Packaging function code..."
       - ZIP_NAME=build-$CODEBUILD_BUILD_NUMBER.zip
+      # Only zip the code file. Libraries are handled by the Lambda Layer.
       - zip "$ZIP_NAME" lambda_function.py
       - echo "Uploading unsigned artifact to S3..."
       - aws s3 cp "$ZIP_NAME" "s3://$BUCKET_NAME/unsigned-code/$ZIP_NAME"
@@ -33,6 +34,7 @@ phases:
           echo "Status: $STATUS..."; sleep 10
         done
       - SIGNED_KEY=$(aws signer describe-signing-job --job-id $JOB_ID --query 'signedObject.s3.key' --output text)
+      - echo "Deploying signed code..."
       - aws lambda update-function-code --function-name "$LAMBDA_FUNCTION" --s3-bucket "$BUCKET_NAME" --s3-key "$SIGNED_KEY"
 
 artifacts:
