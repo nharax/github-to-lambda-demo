@@ -19,14 +19,14 @@ phases:
       - echo "Packaging Lambda function..."
       - ZIP_NAME=build-$CODEBUILD_BUILD_NUMBER.zip
       - zip -r $ZIP_NAME .
-
       - echo "Uploading unsigned artifact to S3..."
       - aws s3 cp $ZIP_NAME s3://$BUCKET_NAME/unsigned-code/$ZIP_NAME
 
   post_build:
     commands:
       - echo "Getting latest version ID of unsigned artifact..."
-      - VERSION_ID=$(aws s3api list-object-versions \
+      - |
+        VERSION_ID=$(aws s3api list-object-versions \
           --bucket "$BUCKET_NAME" \
           --prefix "unsigned-code/$ZIP_NAME" \
           --query 'Versions[?IsLatest==`true`].VersionId' \
@@ -34,7 +34,8 @@ phases:
       - echo "Unsigned artifact version: $VERSION_ID"
 
       - echo "Starting signing job..."
-      - JOB_ID=$(aws signer start-signing-job \
+      - |
+        JOB_ID=$(aws signer start-signing-job \
           --source "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"key\":\"unsigned-code/$ZIP_NAME\",\"version\":\"$VERSION_ID\"}}" \
           --destination "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"prefix\":\"signed-code/\"}}" \
           --profile-name "$SIGNING_PROFILE" \
@@ -57,7 +58,8 @@ phases:
         done
 
       - echo "Getting signed object key..."
-      - SIGNED_KEY=$(aws signer describe-signing-job \
+      - |
+        SIGNED_KEY=$(aws signer describe-signing-job \
           --job-id $JOB_ID \
           --query 'signedObject.s3.key' \
           --output text)
