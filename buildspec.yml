@@ -17,6 +17,7 @@ phases:
       - echo "Packaging function code..."
       - ZIP_NAME=build-$CODEBUILD_BUILD_NUMBER.zip
       - zip "$ZIP_NAME" lambda_function.py
+      - echo "Uploading unsigned artifact to S3..."
       - aws s3 cp "$ZIP_NAME" "s3://$BUCKET_NAME/unsigned-code/$ZIP_NAME"
   post_build:
     commands:
