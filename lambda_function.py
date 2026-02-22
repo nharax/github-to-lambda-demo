@@ -28,7 +28,7 @@ def lambda_handler(event, context):
         return {
             'statusCode': 200,
             'body': json.dumps({
-                'message': "Success! No Pandas required.",
+                'message': "Pipeline test successful - v2",
                 'python_version': "3.14",
                 'average_age': mean_age,
                 'total_records': len(data_list),
