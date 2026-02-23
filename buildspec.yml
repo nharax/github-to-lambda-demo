@@ -6,8 +6,8 @@ env:
     BUCKET_NAME: iotaas-code-signing-bucket
     UNSIGNED_PREFIX: "unsigned code"
     SIGNED_PREFIX: "signed code"
-    LAMBDA_FUNCTION: yourLambdaName
-    SIGNING_PROFILE: YOUR_SIGNING_PROFILE_NAME
+    LAMBDA_FUNCTION: yourLambdaName            # <-- replace with your Lambda name
+    SIGNING_PROFILE: YOUR_SIGNING_PROFILE_NAME # <-- replace with your Signing Profile
 
 phases:
 
@@ -15,38 +15,51 @@ phases:
     runtime-versions:
       python: 3.11
     commands:
-      - echo "Install phase"
+      - echo "Install phase started"
+      - echo "Upgrading pip if needed"
+      - pip install --upgrade pip
 
   build:
     commands:
+      - echo "Build phase started"
       - echo "Zipping Lambda package"
       - zip -r function.zip .
 
   post_build:
     commands:
       - echo "Uploading unsigned artifact to S3"
-      - aws s3 cp function.zip "s3://$BUCKET_NAME/$UNSIGNED_PREFIX/function.zip"
+      - aws s3 cp function.zip "s3://$BUCKET_NAME/$UNSIGNED_PREFIX/function.zip" --region $AWS_DEFAULT_REGION
 
-      - echo "Starting signing job"
+      - echo "Starting code signing job"
       - |
         JOB_ID=$(aws signer start-signing-job \
           --source s3={bucketName=$BUCKET_NAME,key="$UNSIGNED_PREFIX/function.zip"} \
           --destination s3={bucketName=$BUCKET_NAME,prefix="$SIGNED_PREFIX/"} \
           --profile-name $SIGNING_PROFILE \
           --query jobId --output text)
-
       - echo "Signing Job ID: $JOB_ID"
 
-      - echo "Waiting for signing to complete..."
+      - echo "Waiting for signing job to complete..."
       - |
-        aws signer wait signing-job-completed --job-id $JOB_ID
+        while true; do
+          STATUS=$(aws signer describe-signing-job --job-id $JOB_ID --query 'status' --output text)
+          echo "Signing status: $STATUS"
+          if [ "$STATUS" = "Succeeded" ]; then
+            break
+          elif [ "$STATUS" = "Failed" ]; then
+            echo "Signing job failed"
+            exit 1
+          fi
+          sleep 10
+        done
 
       - echo "Updating Lambda with signed artifact"
       - aws lambda update-function-code \
           --function-name $LAMBDA_FUNCTION \
           --s3-bucket $BUCKET_NAME \
           --s3-key "$SIGNED_PREFIX/function.zip" \
-          --publish
+          --publish \
+          --region $AWS_DEFAULT_REGION
 
       - echo "Deployment completed successfully"
 
