@@ -6,8 +6,8 @@ env:
     BUCKET_NAME: iotaas-code-signing-bucket
     UNSIGNED_PREFIX: "unsigned code"
     SIGNED_PREFIX: "signed code"
-    LAMBDA_FUNCTION: yourLambdaName            # <-- replace with your Lambda name
-    SIGNING_PROFILE: YOUR_SIGNING_PROFILE_NAME # <-- replace with your Signing Profile
+    LAMBDA_FUNCTION: github-to-lambda-demo
+    SIGNING_PROFILE: aizatronLambdaCodeSigner
 
 phases:
 
@@ -16,12 +16,10 @@ phases:
       python: 3.11
     commands:
       - echo "Install phase started"
-      - echo "Upgrading pip if needed"
       - pip install --upgrade pip
 
   build:
     commands:
-      - echo "Build phase started"
       - echo "Zipping Lambda package"
       - zip -r function.zip .
 
@@ -53,7 +51,7 @@ phases:
           sleep 10
         done
 
-      - echo "Updating Lambda with signed artifact"
+      - echo "Deploying signed artifact to Lambda"
       - aws lambda update-function-code \
           --function-name $LAMBDA_FUNCTION \
           --s3-bucket $BUCKET_NAME \
