@@ -1,43 +1,31 @@
 import json
-import csv
-from io import StringIO
+import pandas as pd
+import numpy as np
 
 def lambda_handler(event, context):
-    # Example: Imagine this data came from an S3 CSV file or a request
-    csv_data = """Name,Age,City
-    Tom,25,New York
-    Jack,30,Los Angeles
-    Nick,35,Chicago
-    """
-    
     try:
-        # Use the built-in csv module to read data
-        f = StringIO(csv_data.strip())
-        reader = csv.DictReader(f)
-        
-        data_list = []
-        ages = []
-        
-        for row in reader:
-            data_list.append(row)
-            ages.append(int(row['Age']))
-            
-        # Calculate the mean without NumPy
-        mean_age = sum(ages) / len(ages)
-        
+        # Create simple dataframe
+        data = pd.DataFrame({
+            "numbers": [10, 20, 30, 40]
+        })
+
+        # Use numpy to calculate mean
+        mean_value = np.mean(data["numbers"])
+
         return {
-            'statusCode': 200,
-            'body': json.dumps({
-                'message': "Pipeline test successful - v2",
-                'python_version': "3.14",
-                'average_age': mean_age,
-                'total_records': len(data_list),
-                'data': data_list
+            "statusCode": 200,
+            "body": json.dumps({
+                "message": "Dependencies loaded successfully ✅",
+                "pandas_version": pd.__version__,
+                "numpy_version": np.__version__,
+                "calculated_mean": float(mean_value)
             })
         }
-        
+
     except Exception as e:
         return {
-            'statusCode': 500,
-            'body': json.dumps({'error': str(e)})
+            "statusCode": 500,
+            "body": json.dumps({
+                "error": str(e)
+            })
         }
