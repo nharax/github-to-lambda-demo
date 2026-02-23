@@ -2,9 +2,12 @@ version: 0.2
 
 env:
   variables:
-    BUCKET_NAME: my-artifacts-bucket
-    LAMBDA_FUNCTION: myLambdaFunction
-    SIGNING_PROFILE: mySigningProfile
+    AWS_DEFAULT_REGION: af-south-1
+    BUCKET_NAME: iotaas-code-signing-bucket
+    UNSIGNED_PREFIX: "unsigned code"
+    SIGNED_PREFIX: "signed code"
+    LAMBDA_FUNCTION: yourLambdaName
+    SIGNING_PROFILE: YOUR_SIGNING_PROFILE_NAME
 
 phases:
 
@@ -12,22 +15,40 @@ phases:
     runtime-versions:
       python: 3.11
     commands:
-      - echo "Installing dependencies"
-      - pip install --upgrade pip
+      - echo "Install phase"
 
   build:
     commands:
-      - echo "Zipping Lambda code"
+      - echo "Zipping Lambda package"
       - zip -r function.zip .
 
   post_build:
     commands:
-      - echo "Uploading to S3"
-      - aws s3 cp function.zip s3://$BUCKET_NAME/function.zip
-      - echo "Signing code"
-      - aws signer start-signing-job --source s3={bucketName=$BUCKET_NAME,key=function.zip} --destination s3={bucketName=$BUCKET_NAME,prefix=signed/} --profile-name $SIGNING_PROFILE
-      - echo "Updating Lambda"
-      - aws lambda update-function-code --function-name $LAMBDA_FUNCTION --s3-bucket $BUCKET_NAME --s3-key function.zip --publish
+      - echo "Uploading unsigned artifact to S3"
+      - aws s3 cp function.zip "s3://$BUCKET_NAME/$UNSIGNED_PREFIX/function.zip"
+
+      - echo "Starting signing job"
+      - |
+        JOB_ID=$(aws signer start-signing-job \
+          --source s3={bucketName=$BUCKET_NAME,key="$UNSIGNED_PREFIX/function.zip"} \
+          --destination s3={bucketName=$BUCKET_NAME,prefix="$SIGNED_PREFIX/"} \
+          --profile-name $SIGNING_PROFILE \
+          --query jobId --output text)
+
+      - echo "Signing Job ID: $JOB_ID"
+
+      - echo "Waiting for signing to complete..."
+      - |
+        aws signer wait signing-job-completed --job-id $JOB_ID
+
+      - echo "Updating Lambda with signed artifact"
+      - aws lambda update-function-code \
+          --function-name $LAMBDA_FUNCTION \
+          --s3-bucket $BUCKET_NAME \
+          --s3-key "$SIGNED_PREFIX/function.zip" \
+          --publish
+
+      - echo "Deployment completed successfully"
 
 artifacts:
   files:
