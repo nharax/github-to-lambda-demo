@@ -2,51 +2,33 @@ version: 0.2
 
 env:
   variables:
-    BUCKET_NAME: iotaas-code-signing-bucket
-    SIGNING_PROFILE: aizatronLambdaCodeSigner
-    LAMBDA_FUNCTION: github-to-lambda-demo
+    BUCKET_NAME: my-artifacts-bucket
+    LAMBDA_FUNCTION: myLambdaFunction
+    SIGNING_PROFILE: mySigningProfile
 
 phases:
+
   install:
     runtime-versions:
       python: 3.11
     commands:
-      - echo Installing dependencies...
-      - mkdir -p package
+      - echo "Installing dependencies"
       - pip install --upgrade pip
-      - pip install -r requirements.txt -t package
 
   build:
     commands:
-      - echo Packaging Lambda function...
-      - cp lambda_function.py package/
-      - cd package
-      - ZIP_NAME=build-$CODEBUILD_BUILD_NUMBER.zip
-      - zip -r $ZIP_NAME .
-      - mv $ZIP_NAME ..
-      - cd ..
-      - echo Uploading unsigned artifact...
-      - aws s3 cp $ZIP_NAME s3://$BUCKET_NAME/unsigned-code/$ZIP_NAME
-      - sleep 5
+      - echo "Zipping Lambda code"
+      - zip -r function.zip .
 
   post_build:
     commands:
-      - echo Starting CodeSigner job...
-      - JOB_ID=$(aws signer start-signing-job --source "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"key\":\"unsigned-code/$ZIP_NAME\"}}" --destination "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"prefix\":\"signed-code/\"}}" --profile-name $SIGNING_PROFILE --query jobId --output text)
-      - echo Signing Job ID: $JOB_ID
-      - echo Waiting for signing to complete...
-      - STATUS=InProgress
-      - |
-        while [ "$STATUS" = "InProgress" ]; do
-          STATUS=$(aws signer describe-signing-job --job-id $JOB_ID --query status --output text)
-          echo Current status: $STATUS
-          sleep 10
-        done
-      - if [ "$STATUS" != "Succeeded" ]; then echo Signing failed; exit 1; fi
-      - SIGNED_KEY=$(aws signer describe-signing-job --job-id $JOB_ID --query signedObject.s3.key --output text)
-      - echo Deploying signed artifact...
-      - aws lambda update-function-code --function-name $LAMBDA_FUNCTION --s3-bucket $BUCKET_NAME --s3-key $SIGNED_KEY --publish
+      - echo "Uploading to S3"
+      - aws s3 cp function.zip s3://$BUCKET_NAME/function.zip
+      - echo "Signing code"
+      - aws signer start-signing-job --source s3={bucketName=$BUCKET_NAME,key=function.zip} --destination s3={bucketName=$BUCKET_NAME,prefix=signed/} --profile-name $SIGNING_PROFILE
+      - echo "Updating Lambda"
+      - aws lambda update-function-code --function-name $LAMBDA_FUNCTION --s3-bucket $BUCKET_NAME --s3-key function.zip --publish
 
 artifacts:
   files:
-    - build-*.zip
+    - function.zip
