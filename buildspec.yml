@@ -24,43 +24,40 @@ phases:
       - zip -r function.zip .
 
   post_build:
-    commands:
-      - echo "Uploading unsigned artifact to S3"
-      - aws s3 cp function.zip "s3://$BUCKET_NAME/$UNSIGNED_PREFIX/function.zip" --region $AWS_DEFAULT_REGION
+  commands:
+    - echo "Uploading unsigned artifact to S3"
+    - aws s3 cp function.zip "s3://$BUCKET_NAME/$UNSIGNED_PREFIX/function.zip" --region $AWS_DEFAULT_REGION
 
-      - echo "Starting code signing job"
-      - |
-        JOB_ID=$(aws signer start-signing-job \
-          --source s3={bucketName=$BUCKET_NAME,key="$UNSIGNED_PREFIX/function.zip"} \
-          --destination s3={bucketName=$BUCKET_NAME,prefix="$SIGNED_PREFIX/"} \
-          --profile-name $SIGNING_PROFILE \
-          --query jobId --output text)
-      - echo "Signing Job ID: $JOB_ID"
+    - echo "Starting code signing job"
+    - |
+      JOB_ID=$(aws signer start-signing-job \
+        --source "s3={bucketName=$BUCKET_NAME,key=$UNSIGNED_PREFIX/function.zip}" \
+        --destination "s3={bucketName=$BUCKET_NAME,prefix=$SIGNED_PREFIX/}" \
+        --profile-name $SIGNING_PROFILE \
+        --query jobId \
+        --output text)
+    - echo "Signing Job ID: $JOB_ID"
 
-      - echo "Waiting for signing job to complete..."
-      - |
-        while true; do
-          STATUS=$(aws signer describe-signing-job --job-id $JOB_ID --query 'status' --output text)
-          echo "Signing status: $STATUS"
-          if [ "$STATUS" = "Succeeded" ]; then
-            break
-          elif [ "$STATUS" = "Failed" ]; then
-            echo "Signing job failed"
-            exit 1
-          fi
-          sleep 10
-        done
+    - echo "Waiting for signing job to complete..."
+    - |
+      while true; do
+        STATUS=$(aws signer describe-signing-job --job-id $JOB_ID --query 'status' --output text)
+        echo "Signing status: $STATUS"
+        if [ "$STATUS" = "Succeeded" ]; then
+          break
+        elif [ "$STATUS" = "Failed" ]; then
+          echo "Signing job failed"
+          exit 1
+        fi
+        sleep 10
+      done
 
-      - echo "Deploying signed artifact to Lambda"
-      - aws lambda update-function-code \
-          --function-name $LAMBDA_FUNCTION \
-          --s3-bucket $BUCKET_NAME \
-          --s3-key "$SIGNED_PREFIX/function.zip" \
-          --publish \
-          --region $AWS_DEFAULT_REGION
+    - echo "Updating Lambda with signed artifact"
+    - aws lambda update-function-code \
+        --function-name $LAMBDA_FUNCTION \
+        --s3-bucket $BUCKET_NAME \
+        --s3-key "$SIGNED_PREFIX/function.zip" \
+        --publish \
+        --region $AWS_DEFAULT_REGION
 
-      - echo "Deployment completed successfully"
-
-artifacts:
-  files:
-    - function.zip
+    - echo "Deployment completed successfully"
