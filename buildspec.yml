@@ -15,28 +15,41 @@ phases:
     runtime-versions:
       python: 3.14
     commands:
-      - echo "Python 3.14 runtime selected."
+      - echo "Installing Python dependencies from requirements.txt..."
+      - pip install --upgrade pip
+      - pip install -r requirements.txt -t ./package
+      - echo "Dependencies installed."
 
   build:
     commands:
       - echo "Packaging Lambda function..."
       - ZIP_NAME=build-$CODEBUILD_BUILD_NUMBER.zip
-      - zip "$ZIP_NAME" lambda_function.py
+      - cd package
+      - zip -r9 ../$ZIP_NAME .
+      - cd ..
+      - zip -g "$ZIP_NAME" lambda_function.py
       - echo "Uploading unsigned artifact to S3..."
       - aws s3 cp "$ZIP_NAME" "s3://$BUCKET_NAME/$UNSIGNED_PREFIX/$ZIP_NAME"
 
   post_build:
     commands:
-      - echo "Checking environment variables..."
-      - echo "BUCKET_NAME=$BUCKET_NAME"
-      - echo "LAMBDA_FUNCTION=$LAMBDA_FUNCTION"
-      - echo "ZIP_NAME=$ZIP_NAME"
-      - echo "Getting version ID..."
-      - VERSION_ID=$(aws s3api list-object-versions --bucket "$BUCKET_NAME" --prefix "$UNSIGNED_PREFIX/$ZIP_NAME" --query 'Versions[?IsLatest==`true`].VersionId' --output text)
+      - echo "Getting version ID of uploaded artifact..."
+      - VERSION_ID=$(aws s3api list-object-versions \
+          --bucket "$BUCKET_NAME" \
+          --prefix "$UNSIGNED_PREFIX/$ZIP_NAME" \
+          --query 'Versions[?IsLatest==`true`].VersionId' \
+          --output text)
       - echo "VERSION_ID=$VERSION_ID"
-      - echo "Starting code signing job..."
-      - JOB_ID=$(aws signer start-signing-job --source "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"key\":\"$UNSIGNED_PREFIX/$ZIP_NAME\",\"version\":\"$VERSION_ID\"}}" --destination "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"prefix\":\"$SIGNED_PREFIX/\"}}" --profile-name "$SIGNING_PROFILE" --query 'jobId' --output text)
+
+      - echo "Starting CodeSigner job..."
+      - JOB_ID=$(aws signer start-signing-job \
+          --source "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"key\":\"$UNSIGNED_PREFIX/$ZIP_NAME\",\"version\":\"$VERSION_ID\"}}" \
+          --destination "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"prefix\":\"$SIGNED_PREFIX/\"}}" \
+          --profile-name "$SIGNING_PROFILE" \
+          --query 'jobId' \
+          --output text)
       - echo "Signing Job ID: $JOB_ID"
+
       - echo "Waiting for signing job to complete..."
       - |
         while true; do
@@ -46,11 +59,18 @@ phases:
           if [ "$STATUS" = "Failed" ]; then echo "Signing job failed"; exit 1; fi
           sleep 10
         done
+
       - echo "Getting signed artifact key..."
       - SIGNED_KEY=$(aws signer describe-signing-job --job-id $JOB_ID --query 'signedObject.s3.key' --output text)
       - echo "SIGNED_KEY=$SIGNED_KEY"
-      - echo "Deploying signed code to Lambda..."
-      - aws lambda update-function-code --function-name $LAMBDA_FUNCTION --s3-bucket $BUCKET_NAME --s3-key $SIGNED_KEY --publish --region $AWS_DEFAULT_REGION
+
+      - echo "Deploying signed code to Lambda function..."
+      - aws lambda update-function-code \
+          --function-name "$LAMBDA_FUNCTION" \
+          --s3-bucket "$BUCKET_NAME" \
+          --s3-key "$SIGNED_KEY" \
+          --publish \
+          --region "$AWS_DEFAULT_REGION"
 
 artifacts:
   files:
