@@ -15,7 +15,7 @@ def lambda_handler(event, context):
         return {
             "statusCode": 200,
             "body": json.dumps({
-                "message": "Dependencies loaded successfully ✅",
+                "message": "Dependencies loaded successfully   ✅",
                 "pandas_version": pd.__version__,
                 "numpy_version": np.__version__,
                 "calculated_mean": float(mean_value)
