@@ -8,12 +8,15 @@ env:
     SIGNING_PROFILE: aizatronLambdaCodeSigner
     LAMBDA_FUNCTION: github-to-lambda-node-demo
     AWS_DEFAULT_REGION: af-south-1
+    NODE_LAMBDA_DIR: lambdas/node-test-lambda  # <-- your Node.js folder
 
 phases:
   install:
     runtime-versions:
       nodejs: 18
     commands:
+      - echo "Switching to Node.js Lambda folder..."
+      - cd $NODE_LAMBDA_DIR
       - echo "Installing Node.js dependencies..."
       - npm install
 
@@ -27,9 +30,7 @@ phases:
 
   post_build:
     commands:
-      - echo "BUCKET_NAME=$BUCKET_NAME"
-      - echo "ZIP_NAME=$ZIP_NAME"
-      - echo "Getting version ID of uploaded artifact..."
+      - echo "Getting version ID..."
       - |
         VERSION_ID=$(aws s3api list-object-versions \
           --bucket "$BUCKET_NAME" \
@@ -37,6 +38,7 @@ phases:
           --query 'Versions[?IsLatest==`true`].VersionId' \
           --output text)
       - echo "VERSION_ID=$VERSION_ID"
+
       - echo "Starting signing job..."
       - |
         JOB_ID=$(aws signer start-signing-job \
@@ -46,7 +48,8 @@ phases:
           --query 'jobId' \
           --output text)
       - echo "JOB_ID=$JOB_ID"
-      - echo "Waiting for signing job to complete..."
+
+      - echo "Waiting for signing job..."
       - |
         while true; do
           STATUS=$(aws signer describe-signing-job --job-id $JOB_ID --query 'status' --output text)
@@ -55,10 +58,12 @@ phases:
           if [ "$STATUS" = "Failed" ]; then echo "Signing job failed"; exit 1; fi
           sleep 10
         done
+
       - echo "Getting signed artifact key..."
       - SIGNED_KEY=$(aws signer describe-signing-job --job-id $JOB_ID --query 'signedObject.s3.key' --output text)
       - echo "SIGNED_KEY=$SIGNED_KEY"
-      - echo "Updating Lambda function with signed code..."
+
+      - echo "Deploying signed Lambda..."
       - aws lambda update-function-code \
           --function-name "$LAMBDA_FUNCTION" \
           --s3-bucket "$BUCKET_NAME" \
@@ -68,4 +73,4 @@ phases:
 
 artifacts:
   files:
-    - build-*.zip
+    - $NODE_LAMBDA_DIR/build-*.zip
