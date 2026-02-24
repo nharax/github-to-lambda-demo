@@ -8,15 +8,12 @@ env:
     SIGNING_PROFILE: aizatronLambdaCodeSigner
     LAMBDA_FUNCTION: github-to-lambda-node-demo
     AWS_DEFAULT_REGION: af-south-1
-    NODE_LAMBDA_DIR: lambdas/node-test-lambda  # <-- your Node.js folder
 
 phases:
   install:
     runtime-versions:
       nodejs: 18
     commands:
-      - echo "Switching to Node.js Lambda folder..."
-      - cd $NODE_LAMBDA_DIR
       - echo "Installing Node.js dependencies..."
       - npm install
 
@@ -24,15 +21,16 @@ phases:
     commands:
       - echo "Packaging Lambda function..."
       - ZIP_NAME=build-$CODEBUILD_BUILD_NUMBER.zip
-      - zip -r "$ZIP_NAME" . -x "*.git*" "buildspec.yml"
+      - zip -r "$ZIP_NAME" .  # Include index.js, node_modules, package.json, etc.
       - echo "Uploading unsigned artifact to S3..."
       - aws s3 cp "$ZIP_NAME" "s3://$BUCKET_NAME/$UNSIGNED_PREFIX/$ZIP_NAME"
 
   post_build:
     commands:
+      - echo "DEBUG: LAMBDA_FUNCTION='$LAMBDA_FUNCTION'"
+      - echo "DEBUG: BUCKET_NAME='$BUCKET_NAME', ZIP_NAME='$ZIP_NAME'"
       - echo "Getting version ID..."
-      - |
-        VERSION_ID=$(aws s3api list-object-versions \
+      - VERSION_ID=$(aws s3api list-object-versions \
           --bucket "$BUCKET_NAME" \
           --prefix "$UNSIGNED_PREFIX/$ZIP_NAME" \
           --query 'Versions[?IsLatest==`true`].VersionId' \
@@ -40,17 +38,15 @@ phases:
       - echo "VERSION_ID=$VERSION_ID"
 
       - echo "Starting signing job..."
-      - |
-        JOB_ID=$(aws signer start-signing-job \
+      - JOB_ID=$(aws signer start-signing-job \
           --source "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"key\":\"$UNSIGNED_PREFIX/$ZIP_NAME\",\"version\":\"$VERSION_ID\"}}" \
           --destination "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"prefix\":\"$SIGNED_PREFIX/\"}}" \
           --profile-name "$SIGNING_PROFILE" \
-          --query 'jobId' \
-          --output text)
+          --query 'jobId' --output text)
       - echo "JOB_ID=$JOB_ID"
 
-      - echo "Waiting for signing job..."
       - |
+        echo "Waiting for signing job to complete..."
         while true; do
           STATUS=$(aws signer describe-signing-job --job-id $JOB_ID --query 'status' --output text)
           echo "Status: $STATUS"
@@ -65,12 +61,12 @@ phases:
 
       - echo "Deploying signed Lambda..."
       - aws lambda update-function-code \
-          --function-name "$LAMBDA_FUNCTION" \
-          --s3-bucket "$BUCKET_NAME" \
-          --s3-key "$SIGNED_KEY" \
+          --function-name $LAMBDA_FUNCTION \
+          --s3-bucket $BUCKET_NAME \
+          --s3-key $SIGNED_KEY \
           --publish \
-          --region "$AWS_DEFAULT_REGION"
+          --region $AWS_DEFAULT_REGION
 
 artifacts:
   files:
-    - $NODE_LAMBDA_DIR/build-*.zip
+    - build-*.zip
