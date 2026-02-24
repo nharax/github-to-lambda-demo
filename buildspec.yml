@@ -8,20 +8,26 @@ env:
     SIGNING_PROFILE: aizatronLambdaCodeSigner
     LAMBDA_FUNCTION: github-to-lambda-node-demo
     AWS_DEFAULT_REGION: af-south-1
+    LAMBDA_SUBFOLDER: lambdas/node-test-lambda
 
 phases:
   install:
     runtime-versions:
       nodejs: 18
     commands:
+      - echo "Changing to Lambda subfolder..."
+      - cd $LAMBDA_SUBFOLDER
       - echo "Installing Node.js dependencies..."
       - npm install
+      - cd ../../  # return to root
 
   build:
     commands:
       - echo "Packaging Lambda function..."
       - ZIP_NAME=build-$CODEBUILD_BUILD_NUMBER.zip
-      - zip -r "$ZIP_NAME" .
+      - cd $LAMBDA_SUBFOLDER
+      - zip -r ../../$ZIP_NAME .
+      - cd ../../
       - echo "Uploading unsigned artifact to S3..."
       - aws s3 cp "$ZIP_NAME" "s3://$BUCKET_NAME/$UNSIGNED_PREFIX/$ZIP_NAME"
 
