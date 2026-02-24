@@ -3,10 +3,10 @@ version: 0.2
 env:
   variables:
     BUCKET_NAME: iotaas-code-signing-bucket
-    SIGNING_PROFILE: aizatronLambdaCodeSigner
-    LAMBDA_FUNCTION: github-to-lambda-node-demo
     UNSIGNED_PREFIX: unsigned-code
     SIGNED_PREFIX: signed-code
+    SIGNING_PROFILE: aizatronLambdaCodeSigner
+    LAMBDA_FUNCTION: github-to-lambda-node-demo
     AWS_DEFAULT_REGION: af-south-1
 
 phases:
@@ -15,40 +15,39 @@ phases:
       nodejs: 18
     commands:
       - echo "Installing Node.js dependencies..."
-      - cd lambdas/node-test-lambda
       - npm install
-      - cd ../../
 
   build:
     commands:
       - echo "Packaging Lambda function..."
       - ZIP_NAME=build-$CODEBUILD_BUILD_NUMBER.zip
-      - cd lambdas/node-test-lambda
-      - zip -r9 ../../$ZIP_NAME .
-      - cd ../../
-      - echo "Uploading unsigned artifact..."
+      - zip -r "$ZIP_NAME" . -x "*.git*" "buildspec.yml"
+      - echo "Uploading unsigned artifact to S3..."
       - aws s3 cp "$ZIP_NAME" "s3://$BUCKET_NAME/$UNSIGNED_PREFIX/$ZIP_NAME"
 
   post_build:
     commands:
-      - echo "Getting version ID..."
-      - VERSION_ID=$(aws s3api list-object-versions \
+      - echo "BUCKET_NAME=$BUCKET_NAME"
+      - echo "ZIP_NAME=$ZIP_NAME"
+      - echo "Getting version ID of uploaded artifact..."
+      - |
+        VERSION_ID=$(aws s3api list-object-versions \
           --bucket "$BUCKET_NAME" \
           --prefix "$UNSIGNED_PREFIX/$ZIP_NAME" \
           --query 'Versions[?IsLatest==`true`].VersionId' \
           --output text)
       - echo "VERSION_ID=$VERSION_ID"
-
       - echo "Starting signing job..."
-      - JOB_ID=$(aws signer start-signing-job \
+      - |
+        JOB_ID=$(aws signer start-signing-job \
           --source "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"key\":\"$UNSIGNED_PREFIX/$ZIP_NAME\",\"version\":\"$VERSION_ID\"}}" \
           --destination "{\"s3\":{\"bucketName\":\"$BUCKET_NAME\",\"prefix\":\"$SIGNED_PREFIX/\"}}" \
           --profile-name "$SIGNING_PROFILE" \
-          --query 'jobId' --output text)
+          --query 'jobId' \
+          --output text)
       - echo "JOB_ID=$JOB_ID"
-
+      - echo "Waiting for signing job to complete..."
       - |
-        echo "Waiting for signing job to complete..."
         while true; do
           STATUS=$(aws signer describe-signing-job --job-id $JOB_ID --query 'status' --output text)
           echo "Status: $STATUS"
@@ -56,12 +55,10 @@ phases:
           if [ "$STATUS" = "Failed" ]; then echo "Signing job failed"; exit 1; fi
           sleep 10
         done
-
       - echo "Getting signed artifact key..."
       - SIGNED_KEY=$(aws signer describe-signing-job --job-id $JOB_ID --query 'signedObject.s3.key' --output text)
       - echo "SIGNED_KEY=$SIGNED_KEY"
-
-      - echo "Deploying signed Lambda..."
+      - echo "Updating Lambda function with signed code..."
       - aws lambda update-function-code \
           --function-name "$LAMBDA_FUNCTION" \
           --s3-bucket "$BUCKET_NAME" \
