@@ -4,7 +4,7 @@ exports.handler = async (event) => {
     return {
         statusCode: 200,
         body: JSON.stringify({
-            message: "Hello from Node.js 2 Lambda 🚀",
+            message: "Hello from Node.js 2 Lambda - Walthrough Session 🚀",
             input: event
         })
     };
